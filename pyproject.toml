@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llmtrain"
+version = "0.1.0"
+description = "Fine-tune a Traditional Chinese multimodal QA model with LLaMA-Factory"
+requires-python = ">=3.11"
+# Ranges follow LLaMA-Factory's own pyproject.toml at the pinned commit.
+dependencies = [
+    "llamafactory @ git+https://github.com/hiyouga/LLaMA-Factory.git@8bf48110e1b86f66e352d10b1a45a6d6e03142e1",
+    "datasets>=2.16.0,<=4.0.0",
+    "huggingface_hub",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
