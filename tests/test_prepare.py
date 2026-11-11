@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from llmtrain.images import ImageFetchError
 from llmtrain.prepare import prepare
 from llmtrain.split import SPLITS
 
@@ -26,6 +27,31 @@ def a_row(doc_id, query="問題？", answer="答案。", qtype="fact", title="�
         "level": "A",
         "image_missing": False,
     }
+
+
+def image_row(level, doc_id, url=None, query="圖上寫什麼？", answer="寫著長春。", qtype="appearance",
+              title="長春機場", text="長春機場的內文。", caption="屋頂上有金色大字。"):
+    """A fake row shaped like config B or AB (they share the A schema)."""
+    row = a_row(doc_id, query=query, answer=answer, qtype=qtype, title=title, text=text)
+    row["ground_truth_doc"]["img_url"] = url or f"https://upload.wikimedia.org/{doc_id}.jpg"
+    row["ground_truth_doc"]["img_caption"] = caption
+    row["evidence_image"] = "金色大字"
+    row["level"] = level
+    return row
+
+
+class FakeImages:
+    """Stands in for the image downloader: maps a URL to a local path, or fails."""
+
+    def __init__(self, failing=()):
+        self.failing = set(failing)
+        self.calls = []
+
+    def __call__(self, url):
+        self.calls.append(url)
+        if url in self.failing:
+            raise ImageFetchError("HTTP 404")
+        return "images/" + url.rsplit("/", 1)[1]
 
 
 def read_jsonl(path: Path):
@@ -162,3 +188,82 @@ def test_a_row_becomes_sharegpt_text_only_sample(tmp_path):
     assert "說明不應出現在 A 組。" not in user["content"]
     assert assistant == {"role": "assistant", "content": "是貝爾。"}
     assert record["images"] == []
+
+
+def test_b_row_has_one_image_title_caption_and_question_but_no_body(tmp_path):
+    row = image_row("B", 9, url="https://upload.wikimedia.org/a/ab/Changchun.jpg")
+
+    prepare({"B": [row]}, tmp_path, fetch_image=FakeImages())
+
+    [record] = all_records(tmp_path)
+    user = record["messages"][1]["content"]
+    assert user.startswith("<image>") and user.count("<image>") == 1
+    for expected in ("長春機場", "屋頂上有金色大字。", "圖上寫什麼？"):
+        assert expected in user
+    assert "長春機場的內文。" not in user
+    assert record["images"] == ["images/Changchun.jpg"]
+    assert record["messages"][2] == {"role": "assistant", "content": "寫著長春。"}
+
+
+def test_ab_row_has_one_image_title_body_and_question_but_no_caption(tmp_path):
+    prepare({"AB": [image_row("AB", 9)]}, tmp_path, fetch_image=FakeImages())
+
+    [record] = all_records(tmp_path)
+    user = record["messages"][1]["content"]
+    assert user.startswith("<image>") and user.count("<image>") == 1
+    assert "長春機場的內文。" in user and "圖上寫什麼？" in user
+    assert "屋頂上有金色大字。" not in user
+    assert record["images"] == ["images/9.jpg"]
+
+
+def test_an_image_shared_by_b_and_ab_rows_is_fetched_once(tmp_path):
+    images = FakeImages()
+    url = "https://upload.wikimedia.org/shared.jpg"
+
+    prepare({"B": [image_row("B", 9, url=url)], "AB": [image_row("AB", 9, url=url)]}, tmp_path, fetch_image=images)
+
+    assert images.calls == [url]
+    assert [r["images"] for r in all_records(tmp_path)] == [["images/shared.jpg"]] * 2
+
+
+def mixed_groups(n_docs):
+    return {
+        "A": [a_row(d, query=f"doc{d}-q1？") for d in range(100, 100 + n_docs)],
+        "B": [image_row("B", d, query=f"doc{d}-qb？") for d in range(100, 100 + n_docs)],
+        "AB": [image_row("AB", d, query=f"doc{d}-qab？") for d in range(100, 100 + n_docs)],
+    }
+
+
+def test_failed_image_drops_only_its_image_rows_and_keeps_the_split(tmp_path):
+    bad_url = "https://upload.wikimedia.org/105.jpg"
+    good = prepare(mixed_groups(30), tmp_path / "good", seed=7, fetch_image=FakeImages())
+    bad = prepare(mixed_groups(30), tmp_path / "bad", seed=7, fetch_image=FakeImages(failing=[bad_url]))
+
+    assert bad["doc_ids"] == good["doc_ids"]
+    groups_for_105 = [
+        m["group"] for s in SPLITS for m in read_jsonl(tmp_path / "bad" / f"mmqa_{s}.meta.jsonl") if m["doc_id"] == 105
+    ]
+    assert groups_for_105 == ["A"]
+    assert bad["image_failures"] == [{"url": bad_url, "error": "HTTP 404"}]
+    split_of_105 = next(s for s, ids in bad["doc_ids"].items() if 105 in ids)
+    assert bad["excluded"] == {split_of_105: {"B": 1, "AB": 1}}
+    assert good["image_failures"] == [] and good["excluded"] == {}
+    n_rows = sum(len(read_jsonl(tmp_path / "bad" / f"mmqa_{s}.jsonl")) for s in SPLITS)
+    assert n_rows == 90 - 2
+
+
+def test_token_length_distribution_per_group(tmp_path):
+    def fake_count_tokens(text):  # each sample's length is written into its query
+        return int(text.split("len=")[1].split("？")[0])
+
+    rows = {"A": [a_row(d, query=f"len={d}？") for d in range(1, 101)], "B": [image_row("B", 500, query="len=7？")]}
+
+    manifest = prepare(rows, tmp_path, fetch_image=FakeImages(), count_tokens=fake_count_tokens)
+
+    # Nearest-rank percentiles over lengths 1..100.
+    assert manifest["token_lengths"]["A"] == {"n": 100, "min": 1, "p50": 50, "p90": 90, "p99": 99, "max": 100}
+    assert manifest["token_lengths"]["B"] == {"n": 1, "min": 7, "p50": 7, "p90": 7, "p99": 7, "max": 7}
+
+
+def test_token_lengths_are_skipped_without_a_counter(tmp_path):
+    assert prepare({"A": [a_row(1)]}, tmp_path)["token_lengths"] is None

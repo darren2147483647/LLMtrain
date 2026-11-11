@@ -18,11 +18,21 @@ def _clean(text: str) -> str:
     return text.replace(IMAGE_PLACEHOLDER, _ESCAPED_PLACEHOLDER)
 
 
+def needs_image(group: str) -> bool:
+    return group in ("B", "AB")
+
+
 def build_messages(group: str, row: dict) -> list[dict]:
+    """Messages for one QA row. Groups B and AB start the user turn with IMAGE_PLACEHOLDER,
+    which the caller must pair with exactly one image."""
     doc = row["ground_truth_doc"]
     title, query = _clean(doc["title"]), _clean(row["query"])
     if group == "A":
         user = f"標題：{title}\n\n內文：\n{_clean(doc['text'])}\n\n問題：{query}"
+    elif group == "B":
+        user = f"{IMAGE_PLACEHOLDER}\n標題：{title}\n\n圖片說明：\n{_clean(doc['img_caption'])}\n\n問題：{query}"
+    elif group == "AB":
+        user = f"{IMAGE_PLACEHOLDER}\n標題：{title}\n\n內文：\n{_clean(doc['text'])}\n\n問題：{query}"
     else:
         raise ValueError(f"unsupported group: {group}")
     return [
