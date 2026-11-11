@@ -30,7 +30,7 @@
 - Llama 3.2 Vision 只支援英文的圖文輸入，不適用。
 - Gemma 4 預設會開啟「思考模式」，訓練時必須關閉，否則每個答案前都會被加上空的思考標記。
 
-詳細的來源和比較記錄在 `research/llamafactory-multimodal-zhtw.md`（目前還沒有推送到 GitHub）。
+詳細的來源和比較記錄在 [research/llamafactory-multimodal-zhtw.md](research/llamafactory-multimodal-zhtw.md)。
 
 ### 規格和工作項目
 
@@ -68,7 +68,6 @@
 
 - 用 `datasets` 從 Hugging Face 讀取資料的部分還沒有實際執行過（本地沒有安裝 `datasets`），要在工作站第一次執行時確認。
 - 遠端工作站的 GPU 規格。
-- `research/` 研究筆記要不要推送到 GitHub。
 
 ### 下一步
 
