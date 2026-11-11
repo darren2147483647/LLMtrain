@@ -25,7 +25,8 @@ freeze_multi_modal_projector: true
 dataset: mmqa_train
 eval_dataset: mmqa_val  # document-level split; do not use val_size (it splits by row)
 template: gemma4n
-enable_thinking: false  # no chain-of-thought in the data; true would add empty thought tokens
+enable_thinking: false  # no chain-of-thought in the data: the empty thought block goes into the
+                        # prompt (no loss); true would put it in the response and train on it
 cutoff_len: 4096  # check against the token stats printed by llmtrain.prepare
 preprocessing_num_workers: 8
 dataloader_num_workers: 4

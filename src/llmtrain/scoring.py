@@ -22,9 +22,16 @@ MAX_LABEL_MISMATCH = 0.1
 # A refusal opens by saying the material lacks the answer. Every unanswerable reference answer
 # in the training data opens this way (「提供的資料沒有提到……」 for A / AB, 「提供的圖片沒有拍到……」
 # for B), and no answerable one does; matching only the opening keeps answers that merely
-# contain 「沒有」, or partial answers like 「資料沒有明確說明…，但…」, from counting.
+# contain 「沒有」, or partial answers like 「資料沒有明確說明…，但…」, from counting. Common model
+# paraphrases (「根據提供的資料，沒有提到…」, 「無法從圖片判斷…」, 「看不出…」) are accepted too.
+_SOURCE = r"(資料|圖片|照片|影像|文件|內容)"
 REFUSAL_OPENING = re.compile(
-    r"^\s*(提供的)?(資料|圖片|照片|影像|文件|內容)(中|裡|上)?(並)?(沒有|未)(提到|提及|拍到|顯示|記載|包含)"
+    # optional lead-in: 「提供的資料中」「根據提供的資料，」「從圖片來看，」…
+    rf"^\s*((根據|依據|從)?(提供的)?{_SOURCE}(中|裡|上|來看)?[，,、]?\s*)?"
+    # then the refusal itself: 「(並)沒有/未 提到…」, 「無法(從…)看出/判斷…」 or 「看不出」
+    rf"((並)?(沒有|未)(提到|提及|拍到|顯示|記載|包含)"
+    rf"|無法(從(提供的)?{_SOURCE}(中|裡|上)?)?(看出|判斷|得知|確定|確認|回答|辨識)"
+    rf"|看不出)"
 )
 
 

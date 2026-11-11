@@ -40,7 +40,12 @@ def test_answer_short_recall_is_none_when_no_row_has_a_short_answer():
     [
         ("提供的資料沒有提到柯氏豬籠草的花色。", True),  # group A / AB wording
         ("提供的圖片沒有拍到吉他手T恤的背面，無法看出背面是否有圖案。", True),  # group B wording
-        ("資料中並未提及他的球桿品牌。", True),  # a plausible model paraphrase
+        ("資料中並未提及他的球桿品牌。", True),  # plausible model paraphrases from here on
+        ("根據提供的資料，沒有提到他的球桿品牌。", True),
+        ("根據圖片，無法看出背面是否有圖案。", True),
+        ("無法從圖片判斷它的顏色。", True),
+        ("圖片中看不出他穿什麼鞋。", True),
+        ("沒有儀表進近程序的機場在霧中難以降落。", False),  # an answer that opens with 「沒有」
         ("高雪維爾高原機場的跑道沒有儀表進近程序。", False),  # "沒有" inside a real answer
         ("資料沒有明確說明年數，但可以知道是 2002 年之後。", False),  # partial answer, not a refusal
     ],

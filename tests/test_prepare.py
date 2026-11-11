@@ -270,3 +270,17 @@ def test_token_length_distribution_per_group(tmp_path):
 
 def test_token_lengths_are_skipped_without_a_counter(tmp_path):
     assert prepare({"A": [a_row(1)]}, tmp_path)["token_lengths"] is None
+
+
+def test_rows_are_shuffled_within_each_split_so_a_prefix_mixes_groups(tmp_path):
+    # LLaMA-Factory's max_samples keeps the first N rows, so a short smoke run must still see images.
+    prepare(mixed_groups(30), tmp_path / "a", seed=7, fetch_image=FakeImages())
+    prepare(mixed_groups(30), tmp_path / "b", seed=7, fetch_image=FakeImages())
+
+    first_groups = {m["group"] for m in read_jsonl(tmp_path / "a" / "mmqa_train.meta.jsonl")[:12]}
+    assert first_groups == {"A", "B", "AB"}
+    assert read_jsonl(tmp_path / "a" / "mmqa_train.jsonl") == read_jsonl(tmp_path / "b" / "mmqa_train.jsonl")
+    for record, meta in zip(read_jsonl(tmp_path / "a" / "mmqa_train.jsonl"),
+                            read_jsonl(tmp_path / "a" / "mmqa_train.meta.jsonl")):
+        assert str(meta["doc_id"]) == doc_of(record)
+        assert bool(record["images"]) == (meta["group"] != "A")

@@ -61,12 +61,17 @@ def _record_inputs(run_dir: Path, config: Path, data: Path | None) -> None:
         shutil.copy2(data / "manifest.json", run_dir / "data_manifest.json")
 
 
+def _data_overrides(output_dir: Path, data: Path) -> dict:
+    # Images in the prepared data are relative to the data folder, so it is also media_dir.
+    return {"output_dir": output_dir, "dataset_dir": data, "media_dir": data}
+
+
 def train(config: Path, data: Path, resume: Path | None, extra: list[str]) -> Path:
     run_dir = resume or RUNS_DIR / f"{_model_tag(config)}-{_timestamp()}"
     if resume is not None and not resume.is_dir():
         raise SystemExit(f"--resume: {resume} is not a run folder")
     _record_inputs(run_dir, config, data)
-    overrides = {"output_dir": run_dir, "dataset_dir": data, "media_dir": data}
+    overrides = _data_overrides(run_dir, data)
     _llamafactory("train", config, overrides, extra, run_dir)
     print(f"run folder: {run_dir}")
     return run_dir
@@ -77,7 +82,7 @@ def predict(config: Path, data: Path, adapter: Path | None, extra: list[str]) ->
     source = adapter.name if adapter else f"{_model_tag(config)}-base"
     out_dir = RUNS_DIR / f"predict-{source}-{_timestamp()}"
     _record_inputs(out_dir, config, data)
-    overrides = {"output_dir": out_dir, "dataset_dir": data, "media_dir": data}
+    overrides = _data_overrides(out_dir, data)
     if adapter is not None:
         overrides["adapter_name_or_path"] = adapter
     _llamafactory("train", config, overrides, extra, out_dir)  # do_predict runs through `train`

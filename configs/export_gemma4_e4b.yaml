@@ -5,6 +5,7 @@
 model_name_or_path: google/gemma-4-E4B-it
 template: gemma4n
 finetuning_type: lora
+infer_dtype: bfloat16  # merged weights in bf16 regardless of the checkpoint default
 
 ### export
 export_size: 5
