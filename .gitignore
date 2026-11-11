@@ -1,0 +1,6 @@
+docs
+CLAUDE.md
+
+__pycache__/
+.pytest_cache/
+LLaMA-Factory/
