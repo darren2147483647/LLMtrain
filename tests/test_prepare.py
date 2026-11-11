@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from llmtrain.prepare import prepare
+from llmtrain.split import SPLITS
 
 
 def a_row(doc_id, query="問題？", answer="答案。", qtype="fact", title="標題", text="內文。"):
@@ -32,7 +33,7 @@ def read_jsonl(path: Path):
 
 
 def all_records(out: Path):
-    return [r for s in ("train", "val", "test") for r in read_jsonl(out / f"mmqa_{s}.jsonl")]
+    return [r for s in SPLITS for r in read_jsonl(out / f"mmqa_{s}.jsonl")]
 
 
 def two_questions_per_doc(n_docs):
@@ -41,11 +42,12 @@ def two_questions_per_doc(n_docs):
 
 
 def doc_of(record):
+    """The doc id traced through the query text: an independent check on the .meta files."""
     return record["messages"][1]["content"].split("問題：doc")[1].split("-")[0]
 
 
 def docs_per_split(out: Path):
-    return {s: {doc_of(r) for r in read_jsonl(out / f"mmqa_{s}.jsonl")} for s in ("train", "val", "test")}
+    return {s: {str(m["doc_id"]) for m in read_jsonl(out / f"mmqa_{s}.meta.jsonl")} for s in SPLITS}
 
 
 def test_split_is_8_1_1_by_document_and_never_splits_a_document(tmp_path):
@@ -54,7 +56,7 @@ def test_split_is_8_1_1_by_document_and_never_splits_a_document(tmp_path):
     docs = docs_per_split(tmp_path)
     assert {s: len(d) for s, d in docs.items()} == {"train": 80, "val": 10, "test": 10}
     assert not (docs["train"] & docs["val"] or docs["train"] & docs["test"] or docs["val"] & docs["test"])
-    assert sum(len(read_jsonl(tmp_path / f"mmqa_{s}.jsonl")) for s in ("train", "val", "test")) == 200
+    assert sum(len(read_jsonl(tmp_path / f"mmqa_{s}.jsonl")) for s in SPLITS) == 200
 
 
 def test_same_seed_gives_same_split_and_other_seed_differs(tmp_path):
@@ -73,7 +75,7 @@ def test_writes_dataset_info_registering_each_split_for_llamafactory(tmp_path):
     info = json.loads((tmp_path / "dataset_info.json").read_text(encoding="utf-8"))
     # Shape follows LLaMA-Factory data/README.md (sharegpt, role/content tags), plus system_tag
     # so the leading system message is read as the system prompt.
-    for split in ("train", "val", "test"):
+    for split in SPLITS:
         assert info[f"mmqa_{split}"] == {
             "file_name": f"mmqa_{split}.jsonl",
             "formatting": "sharegpt",
@@ -94,8 +96,8 @@ def test_metadata_file_lines_up_with_each_split_for_evaluation(tmp_path):
     rows[0]["answer_short"] = ""
     prepare({"A": rows}, tmp_path, seed=3)
 
-    seen = 0
-    for split in ("train", "val", "test"):
+    unanswerable_seen = 0
+    for split in SPLITS:
         records = read_jsonl(tmp_path / f"mmqa_{split}.jsonl")
         metas = read_jsonl(tmp_path / f"mmqa_{split}.meta.jsonl")
         assert len(records) == len(metas)
@@ -105,12 +107,12 @@ def test_metadata_file_lines_up_with_each_split_for_evaluation(tmp_path):
             assert meta["group"] == "A"
             assert meta["answer"] == record["messages"][2]["content"]
             if meta["qtype"] == "unanswerable":
-                seen += 1
+                unanswerable_seen += 1
                 assert meta["answer_short"] == ""
             else:
                 assert meta["qtype"] == "fact" and meta["answer_short"] == "短答"
             assert meta["evidence"] == "證據"
-    assert seen == 1  # unanswerable rows are kept
+    assert unanswerable_seen == 1  # unanswerable rows are kept
 
 
 def test_manifest_records_source_seed_split_ids_and_counts(tmp_path):
@@ -131,6 +133,17 @@ def test_manifest_records_source_seed_split_ids_and_counts(tmp_path):
     assert sum(n for s in counts.values() for g in s.values() for n in g.values()) == 20
     split_of_100 = next(s for s, d in docs.items() if "100" in d)
     assert counts[split_of_100]["A"]["unanswerable"] == 1
+
+
+def test_literal_image_tags_in_source_text_are_escaped(tmp_path):
+    # LLaMA-Factory counts "<image>" across all messages and errors if it differs from len(images).
+    row = a_row(1, query="<image>是什麼？", answer="指 <image> 標籤。", title="HTML <image>", text="寫成 <image> 的標籤。")
+
+    prepare({"A": [row]}, tmp_path)
+
+    [record] = all_records(tmp_path)
+    assert not any("<image>" in m["content"] for m in record["messages"])
+    assert "image" in record["messages"][1]["content"] and "image" in record["messages"][2]["content"]
 
 
 def test_a_row_becomes_sharegpt_text_only_sample(tmp_path):

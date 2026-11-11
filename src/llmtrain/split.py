@@ -6,19 +6,23 @@ document ids, not rows: every row of a document lands in the same split.
 
 import random
 
-SPLITS = ("train", "val", "test")
-RATIOS = (8, 1, 1)
+# Split name -> relative size. Order matters: ids are dealt out in this order.
+RATIOS = {"train": 8, "val": 1, "test": 1}
+SPLITS = tuple(RATIOS)
 
 
 def assign_splits(doc_ids, seed: int) -> dict:
-    """Map each unique doc_id to "train", "val" or "test" in an 8/1/1 ratio.
+    """Map each unique doc_id to a split name in the RATIOS proportions.
 
     The result depends only on the set of ids and the seed, not on row order.
+    The last split takes whatever rounding leaves over.
     """
     ids = sorted(set(doc_ids))
     random.Random(seed).shuffle(ids)
-    total = sum(RATIOS)
-    n_train = round(len(ids) * RATIOS[0] / total)
-    n_val = round(len(ids) * RATIOS[1] / total)
-    bounds = {"train": ids[:n_train], "val": ids[n_train : n_train + n_val], "test": ids[n_train + n_val :]}
-    return {doc_id: split for split, members in bounds.items() for doc_id in members}
+    total = sum(RATIOS.values())
+    split_of, start = {}, 0
+    for i, (split, ratio) in enumerate(RATIOS.items()):
+        end = len(ids) if i == len(RATIOS) - 1 else start + round(len(ids) * ratio / total)
+        split_of.update((doc_id, split) for doc_id in ids[start:end])
+        start = end
+    return split_of

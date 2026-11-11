@@ -49,7 +49,7 @@ def prepare(rows_by_group: dict, out_dir: Path, *, seed: int = 42, source: dict 
     manifest = {
         "source": source,
         "seed": seed,
-        "ratios": dict(zip(SPLITS, RATIOS)),
+        "ratios": RATIOS,
         "doc_ids": {s: sorted(d for d, sp in split_of.items() if sp == s) for s in SPLITS},
         "counts": _counts(metas),
     }
