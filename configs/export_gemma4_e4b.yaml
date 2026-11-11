@@ -1,0 +1,12 @@
+# Merge a trained adapter into the bf16 base model (a 4-bit base cannot be merged into):
+#   python -m llmtrain.run export configs/export_gemma4_e4b.yaml --adapter runs/<run> [--out <dir>]
+
+### model
+model_name_or_path: google/gemma-4-E4B-it
+template: gemma4n
+finetuning_type: lora
+
+### export
+export_size: 5
+export_device: cpu
+export_legacy_format: false

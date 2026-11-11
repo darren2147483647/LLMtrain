@@ -11,7 +11,8 @@ requires-python = ">=3.11"
 dependencies = [
     "llamafactory @ git+https://github.com/hiyouga/LLaMA-Factory.git@8bf48110e1b86f66e352d10b1a45a6d6e03142e1",
     "datasets>=2.16.0,<=4.0.0",
-    "transformers>=4.55.0,<=5.8.0,!=4.57.0,!=5.6.0",
+    # >=5.5.0: first release with the gemma4 model type; upper bound is LLaMA-Factory's.
+    "transformers>=5.5.0,<=5.8.0,!=5.6.0",
     "huggingface_hub",
     # QLoRA (quantization_bit: 4); same range as LLaMA-Factory requirements/bitsandbytes.txt
     "bitsandbytes>=0.39.0",

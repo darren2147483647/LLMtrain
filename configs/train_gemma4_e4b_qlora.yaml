@@ -1,0 +1,57 @@
+# Main run: QLoRA SFT of Gemma 4 E4B on all of A / B / AB.
+#   python -m llmtrain.run train configs/train_gemma4_e4b_qlora.yaml --data data/mmqa
+# Gemma 4 12B (model_type gemma4_unified) is not loadable with the transformers range this
+# LLaMA-Factory version allows; larger gemma4-type models (google/gemma-4-26B-A4B-it,
+# google/gemma-4-31B-it, template gemma4) can replace this one by changing the model block.
+# Values below are starting points; adjust after the first runs (see RUNBOOK.md).
+
+### model
+model_name_or_path: google/gemma-4-E4B-it
+image_max_pixels: 589824  # 768*768; lower it first if VRAM runs out
+quantization_bit: 4
+quantization_method: bnb
+
+### method
+stage: sft
+do_train: true
+finetuning_type: lora
+lora_rank: 16
+lora_alpha: 32
+lora_target: all
+freeze_vision_tower: true
+freeze_multi_modal_projector: true
+
+### dataset (registered in <data>/dataset_info.json by llmtrain.prepare)
+dataset: mmqa_train
+eval_dataset: mmqa_val  # document-level split; do not use val_size (it splits by row)
+template: gemma4n
+enable_thinking: false  # no chain-of-thought in the data; true would add empty thought tokens
+cutoff_len: 4096  # check against the token stats printed by llmtrain.prepare
+preprocessing_num_workers: 8
+dataloader_num_workers: 4
+# neat_packing is not supported for gemma4 in this LLaMA-Factory version
+
+### output: about 794 steps per epoch (≈6,350 rows / effective batch 8)
+logging_steps: 10
+save_strategy: steps
+save_steps: 200
+save_total_limit: 3
+eval_strategy: steps
+eval_steps: 200
+per_device_eval_batch_size: 1
+load_best_model_at_end: true
+metric_for_best_model: eval_loss
+greater_is_better: false
+plot_loss: true
+report_to: none
+# overwrite_output_dir stays false so `llmtrain.run train --resume <run>` continues.
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+learning_rate: 1.0e-4
+num_train_epochs: 3.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+ddp_timeout: 180000000
