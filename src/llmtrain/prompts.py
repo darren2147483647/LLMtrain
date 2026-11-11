@@ -8,33 +8,44 @@ SYSTEM_PROMPT = (
     "如果資料中沒有答案，請回答「提供的資料沒有提到……」，並簡短說明缺少哪些資訊。"
 )
 
-# LLaMA-Factory's image placeholder. It counts these across all messages and errors if the
-# count differs from len(images), so any literal occurrence in dataset text is escaped.
+# LLaMA-Factory's image placeholder. It counts placeholders across all messages and errors if
+# the count differs from the number of images (videos, audios), so literal occurrences in
+# dataset text are escaped to full-width brackets.
 IMAGE_PLACEHOLDER = "<image>"
-_ESCAPED_PLACEHOLDER = "＜image＞"
+_LLAMAFACTORY_PLACEHOLDERS = (IMAGE_PLACEHOLDER, "<video>", "<audio>")
+
+# Per group: whether it carries one image, and which ground_truth_doc field sits between the
+# title and the question (see spec #1, "各組別的輸入與輸出欄位").
+GROUPS = {
+    "A": {"image": False, "context": ("內文", "text")},
+    "B": {"image": True, "context": ("圖片說明", "img_caption")},
+    "AB": {"image": True, "context": ("內文", "text")},
+}
 
 
 def _clean(text: str) -> str:
-    return text.replace(IMAGE_PLACEHOLDER, _ESCAPED_PLACEHOLDER)
+    for tag in _LLAMAFACTORY_PLACEHOLDERS:
+        text = text.replace(tag, "＜" + tag[1:-1] + "＞")
+    return text
 
 
 def needs_image(group: str) -> bool:
-    return group in ("B", "AB")
+    return GROUPS[group]["image"]
+
+
+def image_url(row: dict) -> str:
+    return row["ground_truth_doc"]["img_url"]
 
 
 def build_messages(group: str, row: dict) -> list[dict]:
-    """Messages for one QA row. Groups B and AB start the user turn with IMAGE_PLACEHOLDER,
+    """Messages for one QA row. Image groups start the user turn with IMAGE_PLACEHOLDER,
     which the caller must pair with exactly one image."""
+    layout = GROUPS[group]
     doc = row["ground_truth_doc"]
-    title, query = _clean(doc["title"]), _clean(row["query"])
-    if group == "A":
-        user = f"標題：{title}\n\n內文：\n{_clean(doc['text'])}\n\n問題：{query}"
-    elif group == "B":
-        user = f"{IMAGE_PLACEHOLDER}\n標題：{title}\n\n圖片說明：\n{_clean(doc['img_caption'])}\n\n問題：{query}"
-    elif group == "AB":
-        user = f"{IMAGE_PLACEHOLDER}\n標題：{title}\n\n內文：\n{_clean(doc['text'])}\n\n問題：{query}"
-    else:
-        raise ValueError(f"unsupported group: {group}")
+    label, field = layout["context"]
+    user = f"標題：{_clean(doc['title'])}\n\n{label}：\n{_clean(doc[field])}\n\n問題：{_clean(row['query'])}"
+    if layout["image"]:
+        user = f"{IMAGE_PLACEHOLDER}\n{user}"
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user},

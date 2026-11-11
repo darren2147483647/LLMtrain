@@ -23,11 +23,10 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from llmtrain.images import ImageFetchError, WikimediaImageStore
-from llmtrain.prompts import build_messages, needs_image
+from llmtrain.prompts import GROUPS, build_messages, image_url, needs_image
 from llmtrain.split import RATIOS, SPLITS, assign_splits
 
 DATASET = "ysh1257/multimodal-ir-zh-tw-qa"
-GROUPS = ("A", "B", "AB")
 DEFAULT_SEED = 42
 DEFAULT_TOKENIZER = "google/gemma-4-12B-it"
 USER_AGENT = "LLMtrain-dataprep/0.1 (https://github.com/darren2147483647/LLMtrain)"
@@ -75,7 +74,7 @@ def prepare(
             split = split_of[row["doc_id"]]
             images = []
             if needs_image(group):
-                image = image_of(row["ground_truth_doc"]["img_url"])
+                image = image_of(image_url(row))
                 if isinstance(image, ImageFetchError):
                     excluded[split][group] += 1
                     continue
@@ -177,6 +176,8 @@ def _print_summary(manifest: dict) -> None:
     print(f"image failures: {len(manifest['image_failures'])} (listed in manifest.json)")
     for group, stats in (manifest["token_lengths"] or {}).items():
         print(f"text tokens {group}: " + ", ".join(f"{k}={v}" for k, v in stats.items()))
+    if manifest["token_lengths"]:
+        print("note: text only, no chat template or image tokens; measure cutoff_len in a smoke run")
 
 
 def _with_progress(fetch_image, every=100):
@@ -197,7 +198,7 @@ def main(argv=None) -> None:
     parser.add_argument("--out", type=Path, required=True, help="output directory (LLaMA-Factory dataset_dir)")
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--revision", help="dataset commit to load; defaults to the current main commit")
-    parser.add_argument("--groups", nargs="+", default=list(GROUPS), choices=GROUPS)
+    parser.add_argument("--groups", nargs="+", default=list(GROUPS), choices=list(GROUPS))
     parser.add_argument("--tokenizer", default=DEFAULT_TOKENIZER, help="HF tokenizer for length stats")
     parser.add_argument("--no-token-stats", action="store_true", help="skip loading a tokenizer")
     parser.add_argument("--user-agent", default=USER_AGENT, help="sent to Wikimedia, which requires one")

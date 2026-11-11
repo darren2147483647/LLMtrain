@@ -163,12 +163,15 @@ def test_manifest_records_source_seed_split_ids_and_counts(tmp_path):
 
 def test_literal_image_tags_in_source_text_are_escaped(tmp_path):
     # LLaMA-Factory counts "<image>" across all messages and errors if it differs from len(images).
-    row = a_row(1, query="<image>是什麼？", answer="指 <image> 標籤。", title="HTML <image>", text="寫成 <image> 的標籤。")
+    # The same check applies to its <video> and <audio> placeholders.
+    row = a_row(1, query="<image>是什麼？", answer="指 <image> 標籤。", title="HTML <image>",
+                text="寫成 <image>、<video> 或 <audio> 的標籤。")
 
     prepare({"A": [row]}, tmp_path)
 
     [record] = all_records(tmp_path)
-    assert not any("<image>" in m["content"] for m in record["messages"])
+    for tag in ("<image>", "<video>", "<audio>"):
+        assert not any(tag in m["content"] for m in record["messages"])
     assert "image" in record["messages"][1]["content"] and "image" in record["messages"][2]["content"]
 
 

@@ -123,3 +123,13 @@ def test_non_image_response_is_a_failure(tmp_path):
     with pytest.raises(ImageFetchError, match="text/html"):
         store(tmp_path, http, clock)(URL)
     assert not list(tmp_path.rglob("*.jpg"))
+
+
+def test_an_excessive_retry_after_is_capped(tmp_path):
+    clock = FakeClock()
+    http = FakeHttp(clock, {URL: [(429, {"retry-after": "86400"}, b""), ok()]})
+
+    store(tmp_path, http, clock)(URL)
+
+    first, second = (t for _, _, t in http.requests)
+    assert 0 < second - first <= 300
