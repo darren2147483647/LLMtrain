@@ -12,3 +12,4 @@ https://huggingface.co/datasets/ysh1257/multimodal-ir-zh-tw-qa
 note:
 如果QA中出現A、B、A+B，代表的意思可能是僅文字、僅圖片、兩者皆有
 在確認遠端機器能否安裝claude前，agent規範與閱讀文件無提交必要
+原本預期使用Gemma4 12B，因transformer不支援，暫且改用Gemma4 E4B
