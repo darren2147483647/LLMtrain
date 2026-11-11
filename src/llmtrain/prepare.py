@@ -19,6 +19,7 @@ Outputs, all in --out:
 import argparse
 import json
 import math
+import random
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -84,6 +85,13 @@ def prepare(
             metas[split].append(_metadata(group, row))
             if count_tokens:
                 lengths[group].append(count_tokens("\n".join(m["content"] for m in messages)))
+    # Interleave groups within each split: LLaMA-Factory's max_samples keeps the first N rows,
+    # and a grouped file would give a short run text-only rows. Records and metadata move together.
+    rng = random.Random(seed)
+    for split in SPLITS:
+        pairs = list(zip(records[split], metas[split]))
+        rng.shuffle(pairs)
+        records[split], metas[split] = [r for r, _ in pairs], [m for _, m in pairs]
     for split in SPLITS:
         _write_jsonl(out_dir / f"mmqa_{split}.jsonl", records[split])
         # Line i of the .meta file describes line i of the training file.
