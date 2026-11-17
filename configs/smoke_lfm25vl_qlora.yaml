@@ -1,0 +1,56 @@
+# Smoke test: a few QLoRA steps on a tiny non-Chinese VLM to prove the whole pipeline runs
+# (images, eval, checkpoints, resume) before spending GPU hours on the real model.
+# Launch through llmtrain.run, which sets output_dir / dataset_dir / media_dir:
+#   python -m llmtrain.run train configs/smoke_lfm25vl_qlora.yaml --data data/mmqa
+
+### model
+model_name_or_path: LiquidAI/LFM2.5-VL-1.6B
+image_max_pixels: 262144
+quantization_bit: 4
+quantization_method: bnb
+trust_remote_code: true
+
+### method
+stage: sft
+do_train: true
+finetuning_type: lora
+lora_rank: 8
+lora_target: all
+# LFM2-VL has no composite-model entry in LLaMA-Factory, so these two flags have no effect on it;
+# they matter for the main model.
+freeze_vision_tower: true
+freeze_multi_modal_projector: true
+
+### dataset (registered in <data>/dataset_info.json by llmtrain.prepare)
+dataset: mmqa_train
+eval_dataset: mmqa_val
+template: lfm2_vl
+cutoff_len: 4096
+max_samples: 48  # first 48 rows of each dataset; prepare shuffles, so all groups appear
+preprocessing_num_workers: 4
+dataloader_num_workers: 2
+
+### output: checkpoints every save_steps, keep 3, end on the lowest eval_loss
+logging_steps: 1
+save_strategy: steps
+save_steps: 4
+save_total_limit: 3
+eval_strategy: steps
+eval_steps: 4
+per_device_eval_batch_size: 1
+load_best_model_at_end: true
+metric_for_best_model: eval_loss
+greater_is_better: false
+plot_loss: true
+report_to: none
+# overwrite_output_dir stays false: re-running into the same output_dir resumes from the
+# latest checkpoint (LLaMA-Factory hparams/parser.py).
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 2
+learning_rate: 1.0e-4
+max_steps: 12
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true

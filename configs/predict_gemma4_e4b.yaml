@@ -1,0 +1,28 @@
+# Test-split predictions for the baseline (no --adapter) or a trained run (--adapter runs/<run>):
+#   python -m llmtrain.run predict configs/predict_gemma4_e4b.yaml --data data/mmqa [--adapter runs/<run>]
+# Uses the same prompts (from llmtrain.prepare), template and thinking setting as training.
+
+### model
+model_name_or_path: google/gemma-4-E4B-it
+image_max_pixels: 589824
+quantization_bit: 4  # the quantised base the adapter was trained on
+quantization_method: bnb
+
+### method
+stage: sft
+do_predict: true
+finetuning_type: lora
+
+### dataset
+eval_dataset: mmqa_test
+template: gemma4n
+enable_thinking: false
+cutoff_len: 4096
+preprocessing_num_workers: 8
+
+### predict
+per_device_eval_batch_size: 1
+predict_with_generate: true
+do_sample: false
+max_new_tokens: 512
+report_to: none

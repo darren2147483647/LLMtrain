@@ -1,0 +1,11 @@
+docs
+CLAUDE.md
+
+__pycache__/
+.pytest_cache/
+LLaMA-Factory/
+data/
+runs/
+
+pytorch_cuda_example.sh
+vscode_tunnel.sh
