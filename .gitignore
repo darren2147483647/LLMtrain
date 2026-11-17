@@ -6,3 +6,6 @@ __pycache__/
 LLaMA-Factory/
 data/
 runs/
+
+pytorch_cuda_example.sh
+vscode_tunnel.sh
