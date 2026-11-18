@@ -18,6 +18,11 @@ dependencies = [
     "huggingface_hub",
     # QLoRA (quantization_bit: 4); same range as LLaMA-Factory requirements/bitsandbytes.txt
     "bitsandbytes>=0.39.0",
+    # LLaMA-Factory refuses predict_with_generate without these (hparams/parser.py,
+    # requirements/metrics.txt), even though llmtrain.scoring does the scoring.
+    "nltk",
+    "jieba",
+    "rouge-chinese",
 ]
 
 [project.optional-dependencies]
