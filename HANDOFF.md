@@ -17,18 +17,25 @@
 | 6. 評估微調後的模型 | ⬜ | |
 | 7. 匯出 | ⬜ | |
 
-## 下一個工作：基準評估
+## 在 Nano5 上的工作方式
 
-在 Nano5 上，先啟用 conda 環境，再從 repo 根目錄送出：
+- **所有工作都用 `sbatch swork.sh <指令>` 送出**，不加其他 sbatch 選項。Slurm 的設定寫在 `swork.sh` 的 `#SBATCH` 裡：目前是 `normal` partition、3 小時、1 張 GPU。只有在工作真的需要更長時間時，才去改 `swork.sh` 的時間上限。
+- 輸出在 `logs/swork_<工作編號>.log`。開頭會記錄節點、時間上限、使用的 Python 和完整指令，用來分辨是哪個工作。
+- **tunnel 只用來編輯和刪除檔案，不用來執行工作。** 指令可以從 SSH 的登入節點送出。
+- 送出之後執行一次 `squeue -u $USER` 或 `sh scheck.sh`，確認沒有重複送出。之前曾經同時跑了兩個 tunnel，也重複送出過兩個基準評估。
+- **策略：** 先用 Gemma 4 E4B（或更小的模型）確認流程可行、微調確實有幫助，之後才考慮換更大的模型。
+
+## 下一個工作：基準評估（進行中）
+
+**2026-11-18 14:40 已經送出，工作編號是 479091**（`logs/swork_479091.log`）。之後要重跑時：
 
 ```bash
-ml load miniconda3/24.11.1 && conda activate llmtrain
 cd ~/LLMtrain && git pull && mkdir -p logs
-sbatch -J baseline_e4b -p normal -t 03:00:00 swork.sh python -m llmtrain.run predict configs/predict_gemma4_e4b.yaml --data data/mmqa
+sbatch swork.sh python -m llmtrain.run predict configs/predict_gemma4_e4b.yaml --data data/mmqa
 ```
 
 **成功的條件：**
-- `tail -n 5 logs/baseline_e4b_<工作編號>.log` 印出 `scored 792 predictions ...`；
+- `tail -n 5 logs/swork_<工作編號>.log` 印出 `scored 792 predictions ...`；
 - `runs/predict-gemma-4-E4B-it-base-<時間>/metrics.json` 裡的 `alignment.label_mismatches` 接近 0；
 - 把 `metrics.json` 的 `overall` 和 `by_group` 記進 WORKLOG，這就是之後要比較的基準。
 
@@ -40,14 +47,16 @@ sbatch -J baseline_e4b -p normal -t 03:00:00 swork.sh python -m llmtrain.run pre
 **失敗時：** log 最後幾行只是 `run.py` 的 `CalledProcessError`，真正的原因在前面：
 
 ```bash
-grep -n -E "Error|error:" logs/baseline_e4b_<工作編號>.log | grep -v CalledProcessError | head -n 5
+grep -n -E "Error|error:" logs/swork_<工作編號>.log | grep -v CalledProcessError | head -n 5
 ```
 
-**成功之後：** 跑主訓練，約 2,400 步，時間不確定，先給足時間：
+**成功之後：** 跑主訓練，約 2,400 步：
 
 ```bash
-sbatch -J train_e4b -p normal -t 24:00:00 swork.sh python -m llmtrain.run train configs/train_gemma4_e4b_qlora.yaml --data data/mmqa
+sbatch swork.sh python -m llmtrain.run train configs/train_gemma4_e4b_qlora.yaml --data data/mmqa
 ```
+
+主訓練很可能超過 `swork.sh` 的 3 小時上限。先用基準評估的實際耗時估計需要多久，再把 `swork.sh` 的 `--time` 調長；`normal` partition 最長 48 小時。萬一訓練中途因為時間到而中斷，也不會白費：用同一個指令加上 `--resume runs/gemma-4-E4B-it-<時間>` 重新送出，就會從最新的 checkpoint 接著訓練。
 
 ## 不在 repo 裡的檔案
 
