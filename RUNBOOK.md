@@ -1,6 +1,15 @@
 # 工作站操作說明
 
-在遠端工作站上，從安裝到匯出模型的完整步驟。所有指令都在 repo 根目錄執行。訓練和預測的輸出會放在 `runs/`，資料放在 `data/mmqa/`，這兩個資料夾都不會被 git 追蹤。
+在遠端工作站上，從安裝到匯出模型的完整步驟。**所有指令都在 repo 根目錄（`~/LLMtrain`）執行**：資料、設定檔和輸出都用相對路徑。訓練和預測的輸出會放在 `runs/`，資料放在 `data/mmqa/`，這兩個資料夾都不會被 git 追蹤。
+
+### 在國網 Nano5 上
+
+- **登入節點不能執行計算工作。** 下面的指令要在計算節點上執行：可以在 VS Code tunnel 的終端機裡執行（tunnel 本身就是一個 Slurm 工作），或用 `sbatch` 送出。
+- **超過幾分鐘的工作用 `sbatch` 送出**（資料準備、預測、訓練），不要依賴 tunnel：tunnel 最長 2 小時（`dev` partition），斷線或結束時，在裡面執行的程式都會一起停止。
+- 送出工作前先 `cd ~/LLMtrain && mkdir -p logs`：工作會在送出時所在的目錄執行，而 Slurm 不會自動建立 log 資料夾。
+- 送出時沿用目前的環境變數。先啟用 conda 環境（`ml load miniconda3/24.11.1 && conda activate llmtrain`）再 `sbatch`，工作裡的 `python` 才會是 `llmtrain` 環境的版本。
+- 一行送出：`sbatch -A <計畫代碼> -p normal -t 03:00:00 --gpus-per-node=1 -c 4 -J <名稱> -o logs/%x_%j.log --wrap "<指令>"`。
+- 查看工作：`squeue -u $USER`（只查一次，不要用 `watch`）；取消：`scancel <工作編號>`。
 
 ## 0. 需求
 
@@ -14,6 +23,7 @@
 ```bash
 git clone https://github.com/darren2147483647/LLMtrain.git
 cd LLMtrain
+ml load miniconda3/24.11.1          # 國網 Nano5 用模組提供 conda；其他機器略過這行
 conda create -n llmtrain python=3.11 -y
 conda activate llmtrain
 # 先安裝和 GPU 驅動相容的 torch。nvidia-smi 右上角的 "CUDA Version" 是驅動支援的最高版本，
@@ -26,7 +36,9 @@ pip install -e ".[test]"
 python -m pytest -q   # 應該全部通過
 ```
 
-`pip install -e .` 會依 `pyproject.toml` 安裝 LLaMA-Factory，版本固定在 commit `8bf4811`，另外還會裝 transformers 5.5–5.8、bitsandbytes 等套件。
+`pip install -e .` 會依 `pyproject.toml` 安裝 LLaMA-Factory，版本固定在 commit `8bf4811`，另外還會裝 transformers 5.5–5.8、bitsandbytes，以及 LLaMA-Factory 預測時要求的 `jieba`、`nltk`、`rouge-chinese`。
+
+裝套件時用 `python -m pip install ...`，確保裝進目前這個 Python 所屬的環境；直接打 `pip` 可能會用到別的環境的 pip。
 
 ## 2. 準備資料（第一次約 1 小時）
 
@@ -67,21 +79,23 @@ python -m llmtrain.run train configs/smoke_lfm25vl_qlora.yaml --data data/mmqa
 
   log 應該顯示 `Resuming training from ...checkpoint-*`。
 
-接著測試預測和評分：
+**冒煙模型只用來測試訓練，不能用來測試預測。** 這個 LLaMA-Factory 版本在 LFM2-VL 產生答案時，會把 `image_rows` / `image_cols` / `image_sizes` 傳給 `generate()`，transformers 會以 `The following model_kwargs are not used by the model` 報錯。預測和評分流程在步驟 4 用 Gemma 4 E4B 驗證。
 
-```bash
-python -m llmtrain.run predict configs/predict_smoke_lfm25vl.yaml --data data/mmqa --adapter runs/LFM2.5-VL-1.6B-<日期時間>
-```
-
-完成後會印出指標，`runs/predict-.../` 裡會有 `generated_predictions.jsonl` 和 `metrics.json`。冒煙模型的分數不重要，重點是流程能跑完。
-
-## 4. 基準：未微調的 Gemma 4 E4B
+## 4. 基準：未微調的 Gemma 4 E4B（約 30–90 分鐘）
 
 ```bash
 python -m llmtrain.run predict configs/predict_gemma4_e4b.yaml --data data/mmqa
 ```
 
-輸出在 `runs/predict-gemma-4-E4B-it-base-<日期時間>/metrics.json`，這就是之後要比較的基準。
+在 Nano5 上用 `sbatch` 送出，partition 用 `normal`、時間設 3 小時。第一次執行會先下載 Gemma 4 E4B（約 16 GB）。
+
+完成時會印出 `scored 792 predictions ...` 和各項指標。輸出在 `runs/predict-gemma-4-E4B-it-base-<日期時間>/metrics.json`，這就是之後要比較的基準。這一步同時驗證了預測檔和參考資料的對齊（`metrics.json` 的 `alignment.label_mismatches` 應該接近 0）。
+
+失敗時，log 最後幾行只是 `run.py` 回報「LLaMA-Factory 失敗了」，真正的原因在前面：
+
+```bash
+grep -n -E "Error|error:" logs/<log 檔> | grep -v CalledProcessError | head -n 5
+```
 
 ## 5. 主訓練
 

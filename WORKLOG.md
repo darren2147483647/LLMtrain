@@ -113,3 +113,55 @@
 ### 下一步
 
 在工作站上照 [RUNBOOK.md](RUNBOOK.md) 依序執行步驟 1 到 3（安裝、準備資料、冒煙測試）。之後再跑基準評估（步驟 4）和主訓練（步驟 5）。
+
+## 2026-11-17 至 11-18：在國網 Nano5 上測試
+
+### 環境
+
+- 工作站是國網中心的 **晶創主機 Nano5**（H100，Slurm 排程）。登入節點不能執行計算工作，所有程式都在計算節點上執行。
+- 用 **VS Code tunnel** 管理遠端程式：tunnel 是一個 Slurm 工作，在計算節點上執行 VS Code CLI（1.146.0，與本機版本相同），本機透過 Remote - Tunnels 擴充套件連線。tunnel 最長 2 小時（`dev` partition），常常斷線，所以超過幾分鐘的工作改用 `sbatch` 送出。
+- 個人的 Slurm 腳本含有計畫代碼和 email，**只放在本機和工作站，不推送到 GitHub**（都列在 `.gitignore`）：
+  - `vscode_tunnel.sh`：開 tunnel；
+  - `prepare_data.sh`：資料準備；
+  - `swork.sh`：用 `sbatch swork.sh <指令>` 執行任意指令，在登入節點上直接執行時會報錯退出。
+- `scheck.sh`：一次查看自己所有的 Slurm 工作、工作裡的程式，以及今天結束的工作，用來取代反覆執行 `squeue`。
+- **計費：** H100 以 GPU 小時計費（學術計畫每 GPU 小時 50 元），工作從開始到結束都計費，閒置也一樣；儲存空間每 GB 每天另計。
+
+### 遇到的問題和解法
+
+| 問題 | 原因 | 解法 |
+|---|---|---|
+| 訓練時出現 `Your setup doesn't support bf16/gpu` | Nano5 的 GPU 驅動只支援 CUDA 12.4，裝到的 torch 是 CUDA 12.6 以上的版本 | 改裝 `torch==2.6.0` 的 cu124 版本（cu124 的最新版）。已寫進 RUNBOOK |
+| 預測時出現 `jieba was not found` | LLaMA-Factory 在 `predict_with_generate` 時強制要求 `jieba`、`nltk`、`rouge-chinese` | 加進 `pyproject.toml`。安裝要用 `~/.conda/envs/llmtrain/bin/python -m pip install ...`，只打 `pip` 會裝到別的環境 |
+| 冒煙測試的預測出現 `model_kwargs are not used by the model: ['image_rows', 'image_cols', 'image_sizes']` | LLaMA-Factory 對 LFM2-VL 產生答案的支援不完整（訓練沒問題） | 不修。冒煙模型只用來測試訓練；預測流程改用 Gemma 4 E4B 驗證。已刪除 `predict_smoke_lfm25vl.yaml` |
+| 資料輸出到了 `~/data/mmqa` | 在家目錄執行 `prepare`，`--out data/mmqa` 是相對路徑 | 搬到 `~/LLMtrain/data/mmqa`。RUNBOOK 已註明所有指令都在 `~/LLMtrain` 執行 |
+| tunnel 工作被取消（477475） | 不確定原因，`sacct` 的結果沒有記錄下來 | 重開 tunnel；資料準備改用 `sbatch` |
+
+### 已驗證
+
+- **安裝：** 42 個測試在工作站上通過；`llamafactory-cli` 可以執行。
+- **資料準備：** 從 Hugging Face 讀取資料正常，45 分鐘跑完（工作 477829）。
+  - 7,945 筆全部納入：train 6,346 / val 807 / test 792；文件數 1,638 / 205 / 204。
+  - 下載約 2,000 張圖片，**失敗 0 張**。
+  - 無法回答題全部保留：A 614、B 291、AB 320。
+  - 文字 token 最長：A 448、B 950、AB 414，遠低於 `cutoff_len` 4096。
+- **冒煙測試訓練**（LFM2.5-VL-1.6B，12 步，`runs/LFM2.5-VL-1.6B-20261118-105455`）：
+  - 評估 loss：0.824（第 4 步）→ 0.808（第 8 步）→ 0.803（第 12 步）；結束時保留了 loss 最低的 `checkpoint-12`。
+  - 訓練 loss 不穩定是正常的：每一步只用 2 筆資料。
+  - **續訓：** log 顯示 `Resuming training from .../checkpoint-12` 和 `global step 12`，續訓後的評估 loss 一樣是 0.8033。
+
+### 還沒驗證
+
+1. 預測 → 對齊 → 評分的流程（要用 Gemma 4 E4B 跑）。
+2. Gemma 4 E4B 能載入，圖片 token 加上文字之後 `cutoff_len` 夠用，以及訓練時 VRAM 是否足夠。
+
+### 下一步
+
+用 `sbatch` 跑**基準評估**（[RUNBOOK.md](RUNBOOK.md) 步驟 4）：
+
+```bash
+cd ~/LLMtrain && mkdir -p logs
+sbatch -J baseline_e4b -p normal -t 03:00:00 swork.sh python -m llmtrain.run predict configs/predict_gemma4_e4b.yaml --data data/mmqa
+```
+
+成功的話，接著跑主訓練（步驟 5，`-p normal -t 12:00:00` 左右）。詳細的交接內容見 [HANDOFF.md](HANDOFF.md)。

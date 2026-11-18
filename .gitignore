@@ -9,3 +9,7 @@ runs/
 
 pytorch_cuda_example.sh
 vscode_tunnel.sh
+prepare_data.sh
+swork.sh
+logs/
+*.log
