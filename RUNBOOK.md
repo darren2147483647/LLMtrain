@@ -16,8 +16,12 @@ git clone https://github.com/darren2147483647/LLMtrain.git
 cd LLMtrain
 conda create -n llmtrain python=3.11 -y
 conda activate llmtrain
-# 先依工作站的 CUDA 版本安裝 torch，見 https://pytorch.org/get-started/locally/
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+# 先安裝和 GPU 驅動相容的 torch。nvidia-smi 右上角的 "CUDA Version" 是驅動支援的最高版本，
+# torch 的 CUDA 版本不能比它新，否則會出現 "NVIDIA driver on your system is too old"。
+# 國網 Nano5 的驅動是 CUDA 12.4，用這行（cu124 最新只到 torch 2.6.0）：
+pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
+# 驅動是 12.6 以上的機器，可改用 cu126 / cu128，見 https://pytorch.org/get-started/locally/
+python -c "import torch; print(torch.__version__, torch.cuda.is_available())"   # 最後必須是 True
 pip install -e ".[test]"
 python -m pytest -q   # 應該全部通過
 ```
